@@ -47,4 +47,6 @@ Respond in clearly labeled sections using markdown-style headings (e.g., ## Summ
 }
 });
 
-app.listen(5000, () => console.log('Server running on http://localhost:5000'));
+app.listen(process.env.PORT || 10000, () => {
+  console.log("Server is running...");
+});
