@@ -67,7 +67,12 @@ export default function PromptInput() {
       } else {
         finalPrompt += '. Provide a concise, high-level summary highlighting only the 3-4 most important points. Use headings if relevant.';
       }
-      const response = await axios.post('https://ai-insights-dashboard-zy80.onrender.com/api/generate', {
+      // Change this line:
+      // const response = await axios.post('https://ai-insights-dashboard-2.onrender.com', {
+      //   topic: finalPrompt,
+      // });
+      // to:
+      const response = await axios.post('http://localhost:5000/api/generate-fused', {
         topic: finalPrompt,
       });
       const aiOutput =
