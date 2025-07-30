@@ -72,7 +72,7 @@ export default function PromptInput() {
       //   topic: finalPrompt,
       // });
       // to:
-      const response = await axios.post('http://localhost:5000/api/generate-fused', {
+      const response = await axios.post('https://ai-insights-dashboard-zy80.onrender.com/api/generate-fused', {
         topic: finalPrompt,
       });
       const aiOutput =
