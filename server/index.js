@@ -89,7 +89,7 @@ app.post('/api/generate-fused', async (req, res) => {
     const perplexityPromise = axios.post(
       'https://api.perplexity.ai/chat/completions',
       {
-        model: 'sonar-medium-online', // you can change model here if needed
+        model: 'sonar-pro', // you can change model here if needed
         messages: [
           { role: 'system', content: "You are an expert trend analyst, skilled at synthesizing business and consumer insights in structured, concise form." },
           { role: 'user', content: prompt }
