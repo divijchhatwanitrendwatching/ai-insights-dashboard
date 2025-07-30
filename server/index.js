@@ -8,7 +8,25 @@ const cors = require('cors');
 const app = express();
 const port = 5000;
 
-app.use(cors());
+// === SECURE CORS ONLY FOR ALLOWED DOMAINS ===
+const allowedOrigins = [
+  "https://ai-insights-dashboard-67iy.vercel.app",
+  "http://localhost:3000"
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // allow requests with no origin (like curl, Postman)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      var msg = 'CORS policy does not allow access from the specified Origin: ' + origin;
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+}));
+
 app.use(express.json());
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -85,11 +103,12 @@ app.post('/api/generate-fused', async (req, res) => {
       }
     );
 
-    // 2. Get response from Perplexity
+    // 2. Get response from Perplexity (use ONLY a permitted model!)
+    // Permitted models as of July 2024: "pplx-7b-online", "pplx-70b-online", "mistral-7b-instruct", "mixtral-8x7b-instruct"
     const perplexityPromise = axios.post(
       'https://api.perplexity.ai/chat/completions',
       {
-        model: 'sonar-pro', // you can change model here if needed
+        model: 'pplx-70b-online',
         messages: [
           { role: 'system', content: "You are an expert trend analyst, skilled at synthesizing business and consumer insights in structured, concise form." },
           { role: 'user', content: prompt }
@@ -111,10 +130,7 @@ app.post('/api/generate-fused', async (req, res) => {
     const openaiText = openaiResult.data.choices[0].message.content.trim();
     const perplexityText = perplexityResult.data.choices[0].message.content.trim();
 
-    // 4. Cross-validation step: Each LLM critiques the other's answer (optional, simple version)
-    // We'll just merge their insights, and (optionally) let OpenAI validate Perplexity's for brevity
-
-    // a. Send Perplexity's answer to OpenAI for a "critique/validation"
+    // 4. Cross-validation: OpenAI critiques Perplexity (optional, simple)
     let validatedPerplexity = "";
     try {
       const validationPrompt = `Here is an AI-generated trend report. Critique it for accuracy, completeness, and suggest improvements or missing points:\n\n${perplexityText}`;
@@ -149,7 +165,7 @@ app.post('/api/generate-fused', async (req, res) => {
     res.json({ insights });
   } catch (error) {
     console.error("Fusion API Error:", error.response?.data || error.message);
-    res.status(500).json({ error: 'Failed to fetch insights from OpenAI and Perplexity' });
+    res.status(500).json({ error: (error.response?.data?.error?.message || 'Failed to fetch insights from OpenAI and Perplexity') });
   }
 });
 
