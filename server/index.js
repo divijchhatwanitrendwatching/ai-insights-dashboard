@@ -74,7 +74,7 @@ app.post('/api/generate-fused', async (req, res) => {
 
     // 3. Get response from Gemini
     const geminiPromise = axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         contents: [{
           role: 'user',
@@ -128,7 +128,7 @@ app.post('/api/generate-fused', async (req, res) => {
     try {
       const validationPrompt = `Here is an AI-generated trend report. Critique it for accuracy, completeness, and suggest improvements or missing points:\n\n${perplexityText}`;
       const validation = await axios.post(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
         { contents: [{ role: "user", parts: [{ text: validationPrompt }] }] }
       );
       perplexityValidatedByGemini =
@@ -171,7 +171,7 @@ app.post('/api/generate-fused', async (req, res) => {
     try {
       const validationPrompt = `Here is an AI-generated trend report. Critique it for accuracy, completeness, and suggest improvements or missing points:\n\n${openaiText}`;
       const validation = await axios.post(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
         { contents: [{ role: "user", parts: [{ text: validationPrompt }] }] }
       );
       openaiValidatedByGemini =
