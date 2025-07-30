@@ -78,7 +78,7 @@ export default function PromptInput() {
     setShowDetails(false);
     try {
       const response = await axios.post(
-        'https://ai-insights-dashboard-zy80.onrender.com',
+        'https://ai-insights-dashboard-zy80.onrender.com/api/generate-fused',
         {
           topic,
           detailLevel: researchDepth === "in-depth" ? "high" : "low",
