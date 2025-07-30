@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
+// ... (keep your color and helper constants as before)
 const DARK_BG = "#15171B";
 const LIGHT_BG = "#F6F7F8";
 
@@ -19,10 +20,25 @@ const researchOptions = [
 
 interface SavedReport {
   topic: string;
-  insights: string;
+  summary: string;
+  details: FusedDetails | null;
   updateInterval: string;
   researchDepth: string;
   lastUpdated: string;
+}
+
+interface FusedDetails {
+  openai: string;
+  perplexity: string;
+  gemini: string;
+  validations: {
+    openaiByPerplexity: string;
+    openaiByGemini: string;
+    perplexityByOpenai: string;
+    perplexityByGemini: string;
+    geminiByOpenai: string;
+    geminiByPerplexity: string;
+  }
 }
 
 export default function PromptInput() {
@@ -30,17 +46,16 @@ export default function PromptInput() {
   const [topic, setTopic] = useState('');
   const [updateInterval, setUpdateInterval] = useState(updateOptions[2].value);
   const [researchDepth, setResearchDepth] = useState(researchOptions[0].value);
-  const [insights, setInsights] = useState<string>('');
+  const [summary, setSummary] = useState<string>('');
+  const [details, setDetails] = useState<FusedDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
   const [error, setError] = useState('');
-  const [editingIdx, setEditingIdx] = useState<number | null>(null);
-  const [editingValue, setEditingValue] = useState<string>('');
-  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
 
   // On load: Get saved reports and theme
   useEffect(() => {
-    const stored = localStorage.getItem('savedReportsV2');
+    const stored = localStorage.getItem('savedReportsV3');
     if (stored) setSavedReports(JSON.parse(stored));
     const theme = localStorage.getItem('dashboardTheme');
     if (theme === 'light') setDarkMode(false);
@@ -48,7 +63,7 @@ export default function PromptInput() {
 
   const saveReports = (reports: SavedReport[]) => {
     setSavedReports(reports);
-    localStorage.setItem('savedReportsV2', JSON.stringify(reports));
+    localStorage.setItem('savedReportsV3', JSON.stringify(reports));
   };
 
   useEffect(() => {
@@ -58,48 +73,45 @@ export default function PromptInput() {
   async function handleGenerate(forceTopic?: string, forceResearch?: string, forceUpdate?: string) {
     setLoading(true);
     setError('');
-    setInsights('');
+    setSummary('');
+    setDetails(null);
+    setShowDetails(false);
     try {
       let finalPrompt = forceTopic || topic;
       const research = forceResearch || researchDepth;
-      if (research === 'in-depth') {
-        finalPrompt += '. Provide an in-depth analysis with sections for summary, mega trends, consumer trends, future scenarios, and key stats. Use headings for each section.';
-      } else {
-        finalPrompt += '. Provide a concise, high-level summary highlighting only the 3-4 most important points. Use headings if relevant.';
-      }
-      // Change this line:
-      // const response = await axios.post('https://ai-insights-dashboard-2.onrender.com', {
-      //   topic: finalPrompt,
-      // });
-      // to:
-      const API_URL = 'https://ai-insights-dashboard-zy80.onrender.com';
-      const response = await axios.post(`${API_URL}/api/generate-fused`, {
+      // The server will structure prompt appropriately, just send through
+      const response = await axios.post('http://localhost:5000/api/generate-fused', {
         topic: finalPrompt,
+        detailLevel: research === "in-depth" ? "high" : "low"
       });
-      const aiOutput =
+
+      const apiSummary =
+        response?.data?.summary ||
         response?.data?.insights ||
         response?.data?.result ||
         response?.data?.text ||
-        response?.data ||
-        'No insights found.';
-      setInsights(aiOutput);
+        'No summary found.';
 
+      setSummary(apiSummary);
+      setDetails(response?.data || null);
+
+      // Save report
       const currentTopic = forceTopic || topic;
       const currentUpdate = forceUpdate || updateInterval;
       const currentResearch = forceResearch || researchDepth;
       if (currentTopic) {
         const now = new Date().toISOString();
-        const existing = savedReports.filter(
-          (r) =>
-            r.topic.toLowerCase() !== currentTopic.toLowerCase() ||
-            r.researchDepth !== currentResearch ||
-            r.updateInterval !== currentUpdate
-        );
         const updated: SavedReport[] = [
-          ...existing,
+          ...savedReports.filter(
+            (r) =>
+              r.topic.toLowerCase() !== currentTopic.toLowerCase() ||
+              r.researchDepth !== currentResearch ||
+              r.updateInterval !== currentUpdate
+          ),
           {
             topic: currentTopic,
-            insights: aiOutput,
+            summary: apiSummary,
+            details: response?.data || null,
             updateInterval: currentUpdate,
             researchDepth: currentResearch,
             lastUpdated: now,
@@ -118,412 +130,208 @@ export default function PromptInput() {
     }
   }
 
-  function handleLoadReport(report: SavedReport) {
-    setTopic(report.topic);
-    setUpdateInterval(report.updateInterval);
-    setResearchDepth(report.researchDepth);
-    setInsights(report.insights);
+  // Helper for displaying details
+  function DetailsPanel({ details }: { details: FusedDetails }) {
+    if (!details) return null;
+    return (
+      <div
+        className="rounded-xl px-5 py-5 mt-6"
+        style={{
+          background: darkMode ? "#202329" : "#f1f5fd",
+          border: darkMode ? "1.2px solid #23262D" : "1.5px solid #b7c6e7",
+        }}>
+        <h3 className="text-2xl font-extrabold mb-5" style={{ color: darkMode ? "#FFD600" : "#2A72D4" }}>
+          Full AI Research Panel
+        </h3>
+        <Section title="OpenAI Main Output" text={details.openai} color="#3bb3fc" />
+        <Section title="OpenAI Validated by Perplexity" text={details.validations.openaiByPerplexity} color="#3bb3fc" />
+        <Section title="OpenAI Validated by Gemini" text={details.validations.openaiByGemini} color="#3bb3fc" />
+
+        <Section title="Perplexity Main Output" text={details.perplexity} color="#07d189" />
+        <Section title="Perplexity Validated by OpenAI" text={details.validations.perplexityByOpenai} color="#07d189" />
+        <Section title="Perplexity Validated by Gemini" text={details.validations.perplexityByGemini} color="#07d189" />
+
+        <Section title="Gemini Main Output" text={details.gemini} color="#f2683a" />
+        <Section title="Gemini Validated by OpenAI" text={details.validations.geminiByOpenai} color="#f2683a" />
+        <Section title="Gemini Validated by Perplexity" text={details.validations.geminiByPerplexity} color="#f2683a" />
+      </div>
+    );
   }
 
-  function handleDeleteReport(idx: number) {
-    const updated = savedReports.filter((_, i) => i !== idx);
-    saveReports(updated);
-    setInsights('');
+  function Section({ title, text, color }: { title: string; text: string; color: string }) {
+    return (
+      <div className="mb-5">
+        <h4 className="font-bold text-lg mb-2" style={{ color }}>{title}</h4>
+        <div className="rounded-lg px-4 py-3 text-base"
+          style={{
+            background: darkMode ? "#23262d" : "#fafcff",
+            border: `1px solid ${color}33`,
+            color: darkMode ? "#e6eaf2" : "#181A20",
+            fontFamily: "'Libre Franklin', 'Montserrat', sans-serif"
+          }}>
+          <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>{text}</pre>
+        </div>
+      </div>
+    );
   }
 
-  function handleEditReport(idx: number) {
-    setEditingIdx(idx);
-    setEditingValue(savedReports[idx].topic);
-  }
+  // ... all your Saved Reports and Inputs UI (from your last code)
+  // (For brevity, not re-pasting all of your Saved Reports UI logic here! Use your previous version.)
 
-  function handleSaveEdit(idx: number) {
-    if (!editingValue.trim()) return;
-    const updated = [...savedReports];
-    updated[idx].topic = editingValue.trim();
-    saveReports(updated);
-    setEditingIdx(null);
-    setEditingValue('');
-  }
-
-  function handleClearAll() {
-    saveReports([]);
-    setInsights('');
-  }
-
-  function handleExportPDF(report: SavedReport) {
-    const win = window.open('', '', 'height=700,width=900');
-    if (!win) return;
-    win.document.write('<html><head><title>AI Trend Report</title></head><body>');
-    win.document.write(`<h1>${report.topic}</h1>`);
-    win.document.write('<pre style="font-size:16px;font-family:Arial,sans-serif;">');
-    win.document.write(report.insights.replace(/</g, '&lt;'));
-    win.document.write('</pre></body></html>');
-    win.document.close();
-    setTimeout(() => win.print(), 300);
-  }
-
-  function handleExportWord(report: SavedReport) {
-    const content =
-      `<html><head><meta charset='utf-8'></head><body><h1>${report.topic}</h1><pre style="font-size:16px;font-family:Arial,sans-serif;">${report.insights.replace(/</g, '&lt;')}</pre></body></html>`;
-    const blob = new Blob(['\ufeff', content], {
-      type: 'application/msword',
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${report.topic.replace(/[^a-zA-Z0-9]+/g, '_')}.doc`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }
-
-  async function handleUpdateNow(idx: number) {
-    const report = savedReports[idx];
-    await handleGenerate(report.topic, report.researchDepth, report.updateInterval);
-  }
-
-  async function handleCopy(idx: number) {
-    try {
-      await navigator.clipboard.writeText(savedReports[idx].insights);
-      setCopiedIdx(idx);
-      setTimeout(() => setCopiedIdx(null), 1200);
-    } catch (e) { }
-  }
-
-  // Styling
-  const bg = darkMode ? DARK_BG : LIGHT_BG;
-  const textColor = darkMode ? 'text-white' : 'text-[#20232a]';
-  const cardBg = darkMode ? '#23262D' : '#fff';
-  const inputBg = darkMode ? '#191B1F' : '#F9FAFB';
-  const highlightColor = darkMode ? '#1CCAFF' : '#3882F6';
-  const yellowColor = darkMode ? '#FFD600' : '#FFBB00';
-  const iconHover = darkMode ? 'hover:bg-[#2b3136]' : 'hover:bg-[#e7eafd]';
-
+  // Main return (showing summary and toggle details)
   return (
-    <div className={`min-h-screen w-full px-0 py-0`} style={{ background: bg }}>
-      <style>
-        {`
-          @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&family=Libre+Franklin:wght@400;700;900&display=swap');
-          body { background: ${bg} !important; }
-          ::selection { background: #1ccaff44; }
-        `}
-      </style>
-
-      {/* Dark/Light toggle */}
-      {/* Remove the top bar, just show the toggle button inline at the top right of the content */}
-      <div className="w-full max-w-7xl mx-auto flex justify-end items-center pt-6 pr-10">
+    <div
+      style={{
+        minHeight: "100vh",
+        background: darkMode
+          ? "linear-gradient(135deg, #181A1B 0%, #23272f 100%)"
+          : "linear-gradient(135deg, #f7f8fa 0%, #e9f3ff 100%)",
+        fontFamily: "Inter, Arial, sans-serif",
+        paddingBottom: 40,
+        transition: "background .4s",
+      }}
+      className={darkMode ? "tw-dark" : "tw-light"}
+    >
+      {/* HEADER */}
+      <div
+        style={{
+          background: "none",
+          width: "100vw",
+          marginLeft: -32,
+          padding: "38px 0 18px 0",
+          textAlign: "center",
+          position: "relative",
+        }}
+      >
+        <span style={{
+          fontSize: 38,
+          fontWeight: 800,
+          color: darkMode ? "#fff" : "#222",
+          letterSpacing: "-1.5px",
+          textShadow: darkMode ? "0 2px 12px #0002" : "0 2px 12px #fff2",
+        }}>
+          <span role="img" aria-label="sparkle">✨</span> AI Trend Dashboard
+        </span>
         <button
-          onClick={() => setDarkMode((d) => !d)}
-          className={`px-4 py-2 rounded-xl font-bold shadow transition-colors ${darkMode ? "bg-[#FFD600] text-black" : "bg-[#222c4b] text-[#FFD600]"}`}
-          title="Toggle light/dark mode"
+          onClick={() => setDarkMode((v) => !v)}
+          style={{
+            position: "absolute",
+            right: 60,
+            top: 38,
+            fontSize: 18,
+            padding: "8px 18px",
+            borderRadius: 14,
+            border: 0,
+            background: darkMode ? "#273352" : "#DEE6F5",
+            color: "#FFD02C",
+            fontWeight: 700,
+            transition: "all .3s",
+            boxShadow: "0 2px 8px rgba(0,0,0,.06)",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
         >
           {darkMode ? "🌞 Light" : "🌙 Dark"}
         </button>
       </div>
-
-      <div className="w-full max-w-5xl text-center mt-6 mb-3 mx-auto">
-        <div className="flex justify-center mb-2">
-          <span className="text-4xl mr-2" style={{ color: yellowColor }}>✨</span>
-        </div>
-        <h1 className={`text-5xl font-extrabold mb-2`} style={{ letterSpacing: '-2px', color: darkMode ? "#fff" : "#181A20" }}>
-          AI Trend Dashboard
-        </h1>
-      </div>
-
-      <div className="w-full max-w-7xl flex flex-col md:flex-row gap-8 items-start justify-center mt-2 mb-8 mx-auto">
-
-        {/* SAVED REPORTS */}
-        <div className="flex-1 max-w-2xl w-[650px] min-w-[360px]">
-          <div className="shadow-lg rounded-2xl p-7 mb-6" style={{ background: cardBg }}>
-            <div className="flex justify-between items-center mb-3">
-              <h2 className="text-2xl font-extrabold tracking-tight" style={{ color: yellowColor }}>
-                Saved Reports
-              </h2>
-              {savedReports.length > 0 && (
-                <button
-                  onClick={handleClearAll}
-                  className={`px-3 py-1 rounded-lg font-medium text-xs border transition-all ${darkMode ? 'bg-[#26292f] text-[#FFD600] border-[#FFD600] hover:bg-[#383f49]' : 'bg-[#f7f3e9] text-[#FFBB00] border-[#FFD600] hover:bg-[#ffedc6]'}`}
-                  title="Clear all saved reports"
-                >
-                  Clear All
-                </button>
-              )}
-            </div>
-            <div className="text-xs text-gray-400 mb-2 font-medium">
-              Saved locally. Click a report to view. Rename, refresh, export, copy, or delete below.
-            </div>
-            {savedReports.length === 0 && (
-              <p className={`${textColor} text-base font-medium mt-2 mb-2`}>
-                No saved reports yet.
-              </p>
-            )}
-            <div className="flex flex-col gap-3">
-              {savedReports
-                .slice()
-                .reverse()
-                .map((r, idxOrig) => {
-                  const idx = savedReports.length - 1 - idxOrig;
-                  return (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between gap-3 px-5 py-3 rounded-xl hover:bg-[#e7eafd1c] transition-all"
-                      style={{ background: inputBg, border: darkMode ? '1.5px solid #272f35' : '1.5px solid #e6ebf1' }}
-                    >
-                      {editingIdx === idx ? (
-                        <input
-                          className="flex-1 bg-transparent border-b-2 border-[#1CCAFF] text-lg font-semibold outline-none mr-2"
-                          value={editingValue}
-                          onChange={e => setEditingValue(e.target.value)}
-                          onBlur={() => handleSaveEdit(idx)}
-                          onKeyDown={e => e.key === 'Enter' && handleSaveEdit(idx)}
-                          autoFocus
-                        />
-                      ) : (
-                        <div
-                          className="flex flex-col cursor-pointer w-[80%] truncate"
-                          onClick={() => handleLoadReport(r)}
-                          title={r.topic}
-                        >
-                          <span className="font-semibold text-lg truncate" style={{ color: highlightColor }}>
-                            {r.topic}
-                          </span>
-                          <span className="text-xs text-gray-400">
-                            {updateOptions.find((u) => u.value === r.updateInterval)?.label || 'Unknown'}
-                            {' • '}
-                            {researchOptions.find((d) => d.value === r.researchDepth)?.label || 'Summary'}
-                            <br />
-                            <span className="text-[10px]">
-                              Updated:{' '}
-                              {r.lastUpdated
-                                ? new Date(r.lastUpdated).toLocaleString(undefined, {
-                                    month: 'short',
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })
-                                : 'Never'}
-                            </span>
-                          </span>
-                        </div>
-                      )}
-                      {/* ICONS: smaller and in two rows */}
-                      <div className="flex flex-col gap-0 items-center ml-1">
-                        <div className="flex gap-1 mb-1">
-                          <IconBtn onClick={() => handleEditReport(idx)} title="Rename" icon="✏️" darkMode={darkMode} iconHover={iconHover} iconSize={15} />
-                          <IconBtn onClick={() => handleUpdateNow(idx)} title="Update now" icon="🔄" darkMode={darkMode} iconHover={iconHover} iconSize={15} />
-                          <IconBtn onClick={() => handleExportPDF(r)} title="Export as PDF" icon="📄" darkMode={darkMode} iconHover={iconHover} iconSize={15} />
-                        </div>
-                        <div className="flex gap-1">
-                          <IconBtn onClick={() => handleExportWord(r)} title="Export as Word" icon="📝" darkMode={darkMode} iconHover={iconHover} iconSize={15} />
-                          <IconBtn onClick={() => handleCopy(idx)} title="Copy to clipboard" icon="📋" darkMode={darkMode} iconHover={iconHover} highlight={copiedIdx === idx} iconSize={15} />
-                          <IconBtn onClick={() => handleDeleteReport(idx)} title="Delete" icon="🗑️" darkMode={darkMode} iconHover={iconHover} iconSize={15} />
-                        </div>
-                      </div>
-                      {copiedIdx === idx && (
-                        <span className={`text-xs font-bold pl-2 ${darkMode ? "text-[#FFD600]" : "text-[#222c4b]"}`}>Copied!</span>
-                      )}
-                    </div>
-                  )
-                })}
-            </div>
-          </div>
-        </div>
+      <div className="tw-main" style={{
+        display: "flex",
+        justifyContent: "center",
+        gap: "38px",
+        marginTop: 12,
+        width: "100%",
+        alignItems: "flex-start",
+      }}>
+        {/* (Keep your Saved Reports UI here) */}
 
         {/* MAIN CARD */}
-        <div className="flex-[2] w-full">
-          <div className="shadow-xl rounded-2xl px-7 py-8 mb-8" style={{ background: cardBg }}>
-            <div className="flex flex-col md:flex-row gap-3 items-center mb-6">
-              <input
-                className={`w-full md:w-auto flex-1 px-5 py-3 text-lg rounded-lg border focus:ring-2 transition-all ${
-                  darkMode
-                    ? "bg-[#191B1F] text-white border-[#333] focus:border-[#1CCAFF] focus:ring-[#1CCAFF]"
-                    : "bg-[#F5F6F9] text-[#181A20] border-[#C3C5C9] focus:border-[#3882F6] focus:ring-[#3882F6]"
-                }`}
-                placeholder="Enter a trend topic..."
-                value={topic}
-                maxLength={80}
-                onChange={(e) => setTopic(e.target.value)}
-                autoFocus
-              />
-              <select
-                className={`px-4 py-3 text-base rounded-lg border focus:ring-2 transition-all ${
-                  darkMode
-                    ? "bg-[#191B1F] text-white border-[#333] focus:border-[#1CCAFF] focus:ring-[#1CCAFF]"
-                    : "bg-[#F5F6F9] text-[#181A20] border-[#C3C5C9] focus:border-[#3882F6] focus:ring-[#3882F6]"
-                }`}
-                value={updateInterval}
-                onChange={(e) => setUpdateInterval(e.target.value)}
-              >
-                {updateOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                className={`px-4 py-3 text-base rounded-lg border focus:ring-2 transition-all ${
-                  darkMode
-                    ? "bg-[#191B1F] text-white border-[#333] focus:border-[#1CCAFF] focus:ring-[#1CCAFF]"
-                    : "bg-[#F5F6F9] text-[#181A20] border-[#C3C5C9] focus:border-[#3882F6] focus:ring-[#3882F6]"
-                }`}
-                value={researchDepth}
-                onChange={(e) => setResearchDepth(e.target.value)}
-              >
-                {researchOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+        <div
+          style={{
+            background: darkMode ? "#23272f" : "#fff",
+            borderRadius: 28,
+            boxShadow: `0 8px 32px rgba(32,50,80,0.10)`,
+            padding: "44px 48px 38px 48px",
+            minWidth: 650,
+            maxWidth: 900,
+            width: "100%",
+            alignSelf: "flex-start",
+            border: darkMode ? "1.5px solid #23272f" : `1.5px solid #e3e8f0`,
+            position: "relative",
+            zIndex: 2,
+          }}
+        >
+          {/* INPUT ROW ... (your existing code) */}
+
+          {error && (
+            <div style={{
+              color: "#ff4d4f",
+              background: "#fff0f0",
+              borderRadius: 8,
+              padding: "10px 18px",
+              marginBottom: 18,
+              fontWeight: 500,
+              fontSize: 16,
+              border: `1.2px solid #ff4d4f33`,
+              boxShadow: "0 1.5px 8px rgba(255,77,79,0.04)",
+            }}>
+              {error}
+            </div>
+          )}
+
+          {summary && (
+            <div
+              className="tw-insight"
+              style={{
+                marginTop: 2,
+                background: darkMode ? "#16181c" : "#FAFBFC",
+                color: darkMode ? "#ccecff" : "#193243",
+                borderRadius: 15,
+                padding: "38px 36px 34px 36px",
+                minHeight: 190,
+                fontSize: 18,
+                fontWeight: 450,
+                lineHeight: 1.68,
+                boxShadow: "0 2.5px 14px rgba(23,36,55,0.07)",
+                whiteSpace: "pre-wrap",
+                border: darkMode ? "1.2px solid #23272f" : `1.2px solid #e3e8f0`,
+                transition: "background .3s, color .3s",
+                wordBreak: "break-word",
+              }}
+              dangerouslySetInnerHTML={{ __html: summary.replace(/\n/g, "<br />") }}
+            />
+          )}
+
+          {/* Toggle details */}
+          {details && (
+            <div className="flex justify-center mt-5">
               <button
-                className={`px-7 py-3 text-lg font-bold rounded-lg shadow transition-all ${
-                  loading || !topic
-                    ? "bg-gray-400 text-white"
-                    : "bg-[#3882F6] text-white hover:bg-[#1CCAFF] hover:text-[#23262D]"
-                }`}
-                disabled={loading || !topic}
-                onClick={() => handleGenerate()}
+                onClick={() => setShowDetails(v => !v)}
+                style={{
+                  background: showDetails ? (darkMode ? "#FFD02C" : "#3882F6") : (darkMode ? "#273352" : "#DEE6F5"),
+                  color: showDetails ? (darkMode ? "#181A1B" : "#fff") : "#FFD02C",
+                  fontWeight: 700,
+                  borderRadius: 9,
+                  fontSize: 17,
+                  padding: "13px 28px",
+                  margin: "0 auto",
+                  border: "none",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(32,50,80,0.08)",
+                  transition: ".2s background, .2s color",
+                  letterSpacing: "0.01em",
+                }}
               >
-                {loading ? 'Generating...' : 'Generate'}
+                {showDetails ? "Hide Details" : "Show Full AI Details"}
               </button>
             </div>
+          )}
 
-            {error && (
-              <div className="text-red-400 text-base font-semibold mb-2">{error}</div>
-            )}
-
-            {insights && (
-              <div className="mt-6 rounded-xl px-7 py-6 shadow-md animate-fade-in"
-                style={{
-                  background: darkMode ? "#181A20" : "#F8FAFF",
-                  border: darkMode ? "1px solid #23262D" : "1.5px solid #c9e7fa",
-                }}>
-                <RenderFormattedInsights text={insights} darkMode={darkMode} />
-              </div>
-            )}
-          </div>
+          {/* Details Panel */}
+          {showDetails && details && <DetailsPanel details={details} />}
         </div>
       </div>
     </div>
   );
-}
-
-function IconBtn({ onClick, title, icon, darkMode, iconHover, highlight = false, iconSize = 17 }:
-  { onClick: () => void, title: string, icon: string, darkMode: boolean, iconHover: string, highlight?: boolean, iconSize?: number }) {
-  return (
-    <button
-      className={`w-7 h-7 flex items-center justify-center rounded-lg transition-all ${iconHover} ${highlight ? (darkMode ? "bg-[#FFD600] text-[#181A20]" : "bg-[#3882F6] text-white") : ""}`}
-      style={{ fontSize: iconSize, fontWeight: 700, padding: 0 }}
-      title={title}
-      onClick={onClick}
-      tabIndex={-1}
-      type="button"
-    >
-      {icon}
-    </button>
-  );
-}
-
-// RenderFormattedInsights and helpers
-function RenderFormattedInsights({ text, darkMode }: { text: string; darkMode: boolean }) {
-  const cleanText = text.replace(/^#+\s?/gm, '');
-  const sectionRegex = /([A-Z][A-Za-z ]+)\n/g;
-  const matches: RegExpMatchArray[] = [];
-  let m;
-  while ((m = sectionRegex.exec(cleanText)) !== null) {
-    matches.push(m);
-  }
-  if (!matches.length) {
-    return <BasicParagraph darkMode={darkMode}>{cleanText}</BasicParagraph>;
-  }
-  const sections: { title: string; body: string }[] = [];
-  for (let i = 0; i < matches.length; i++) {
-    const start = matches[i].index! + matches[i][0].length;
-    const end = matches[i + 1]?.index ?? cleanText.length;
-    const title = matches[i][1];
-    const body = cleanText.slice(start, end).trim();
-    sections.push({ title, body });
-  }
-  return (
-    <div>
-      {sections.map((sec, i) => (
-        <div key={i} className="mb-7">
-          <h2
-            style={{
-              color: darkMode ? '#1CCAFF' : '#3882F6',
-              fontWeight: 900,
-              fontSize: 24,
-              marginBottom: 10,
-              fontFamily: "'Montserrat', 'Libre Franklin', sans-serif",
-              textShadow: darkMode ? '0 2px 7px #1118' : '0 1px 5px #f3f7ff',
-            }}
-          >
-            {sec.title}
-          </h2>
-          <SectionBody body={sec.body} darkMode={darkMode} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function BasicParagraph({ children, darkMode }: { children: React.ReactNode, darkMode: boolean }) {
-  return (
-    <div
-      className="text-lg"
-      style={{
-        color: darkMode ? '#fff' : '#23262D',
-        fontWeight: 500,
-        fontFamily: "'Libre Franklin', 'Montserrat', sans-serif",
-        lineHeight: 1.65,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function SectionBody({ body, darkMode }: { body: string, darkMode: boolean }) {
-  const parts = body.split(/\n/).map((line, idx) => {
-    const elements: React.ReactNode[] = [];
-    let lastIdx = 0;
-    let match;
-    const boldRegex = /\*\*(.*?)\*\*/g;
-    while ((match = boldRegex.exec(line)) !== null) {
-      if (match.index > lastIdx) {
-        elements.push(line.slice(lastIdx, match.index));
-      }
-      elements.push(
-        <strong
-          style={{
-            color: darkMode ? '#FFD600' : '#222c4b',
-            fontWeight: 700,
-            fontFamily: "'Montserrat', sans-serif",
-          }}
-          key={idx + '-b-' + match.index}
-        >
-          {match[1]}
-        </strong>
-      );
-      lastIdx = match.index + match[0].length;
-    }
-    if (lastIdx < line.length) {
-      elements.push(line.slice(lastIdx));
-    }
-    return (
-      <div
-        className="mb-1 text-base"
-        key={idx}
-        style={{
-          color: darkMode ? '#E2E2E2' : '#23262D',
-          fontFamily: "'Libre Franklin', 'Montserrat', sans-serif",
-          fontWeight: 500,
-          letterSpacing: '0.01em',
-        }}
-      >
-        {elements}
-      </div>
-    );
-  });
-  return <div>{parts}</div>;
 }
